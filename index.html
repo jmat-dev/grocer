@@ -1211,21 +1211,35 @@ function load() {
     scheduleReminders();
     setSyncStatus(true);
   }, err => {
-    console.error(err);
-    setSyncStatus(false);
+    console.error('Firebase read error:', err);
+    setSyncStatus(false, err);
   });
 
   fbDb.ref('.info/connected').on('value', snap => {
-    setSyncStatus(snap.val() === true);
+    if (snap.val() === true) setSyncStatus(true);
   });
 }
 
-function setSyncStatus(online) {
+function setSyncStatus(online, err) {
   const dot = document.getElementById('sync-dot');
   const label = document.getElementById('sync-label');
   if (!dot) return;
   dot.classList.toggle('offline', !online);
-  label.textContent = online ? 'Synced live' : 'Reconnecting…';
+  if (online) {
+    label.textContent = 'Synced live';
+  } else if (err) {
+    // Most common real cause: Firebase security rules reject the read
+    // (test-mode rules expired, or rules were changed), which the SDK
+    // reports as a 'permission_denied' code. Surface that distinction
+    // directly instead of leaving the phone stuck on a silent spinner.
+    label.textContent = (err.code === 'PERMISSION_DENIED' || /permission/i.test(err.message || ''))
+      ? 'Blocked: check database rules'
+      : 'Connection error — tap for details';
+    label.style.cursor = 'pointer';
+    label.onclick = () => alert('Sync error: ' + (err.code || '') + ' ' + (err.message || err));
+  } else {
+    label.textContent = 'Connecting…';
+  }
 }
 
 function save() {
