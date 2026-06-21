@@ -1,4 +1,4 @@
-const CACHE = 'shoplist-v1';
+const CACHE = 'shoplist-v2';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', e => {
@@ -13,8 +13,30 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
+// Network-first for navigations and the app shell, so a phone always gets the
+// latest deployed code when it has a connection. Falls back to cache only
+// when actually offline. A pure cache-first strategy here previously caused
+// phones to get stuck running a stale version indefinitely after an update.
 self.addEventListener('fetch', e => {
+  const isAppShell = e.request.mode === 'navigate' ||
+    ASSETS.some(a => e.request.url.endsWith(a)) ||
+    e.request.url.endsWith('index.html');
+
+  if (isAppShell) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          const copy = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, copy));
+          return res;
+        })
+        .catch(() => caches.match(e.request).then(r => r || caches.match('/index.html')))
+    );
+    return;
+  }
+
+  // Other assets (fonts, icons): cache-first is fine, they rarely change.
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request).catch(() => caches.match('/index.html')))
+    caches.match(e.request).then(r => r || fetch(e.request))
   );
 });
