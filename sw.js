@@ -1,4 +1,4 @@
-const CACHE = 'shoplist-v2';
+const CACHE = 'shoplist-v3';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', e => {
