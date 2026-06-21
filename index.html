@@ -1000,11 +1000,51 @@ function initFirebase(config) {
 
 function toastPreApp(msg) { alert(msg); }
 
+// Firebase console gives you a JS object literal (unquoted keys, often wrapped
+// in "const firebaseConfig = {...};"), not strict JSON. This extracts and
+// parses it leniently instead of requiring the user to clean it up by hand.
+function parseFirebaseConfig(raw) {
+  if (!raw) return null;
+  let text = raw.trim();
+
+  // Strip a leading "const firebaseConfig = " / "var x =" / "export default" etc.
+  const eq = text.indexOf('=');
+  const braceStart = text.indexOf('{');
+  if (eq !== -1 && braceStart !== -1 && eq < braceStart) {
+    text = text.slice(braceStart);
+  }
+
+  // Keep only the outermost {...} block, in case there's trailing code (e.g. ";")
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start !== -1 && end !== -1 && end > start) {
+    text = text.slice(start, end + 1);
+  }
+
+  // First, try strict JSON (covers the case where it's already valid).
+  try { return JSON.parse(text); } catch (e) {}
+
+  // Fall back to quoting unquoted keys, then try JSON again.
+  let attempt = text
+    .replace(/([{,]\s*)([A-Za-z_$][A-Za-z0-9_$]*)\s*:/g, '$1"$2":')
+    .replace(/,(\s*[}\]])/g, '$1'); // strip trailing commas
+  try { return JSON.parse(attempt); } catch (e) {}
+
+  // Last resort: evaluate it as a JS object literal in an isolated function.
+  // Safe here because this only ever runs on text the user themselves pasted
+  // into their own browser, not on remote or untrusted content.
+  try {
+    return Function('"use strict"; return (' + text + ')')();
+  } catch (e) {
+    return null;
+  }
+}
+
 function saveFirebaseConfig() {
-  const raw = document.getElementById('fb-config-input').value.trim();
-  let config;
-  try { config = JSON.parse(raw); } catch (e) {
-    toastPreApp('Could not parse that. Make sure it is valid JSON (the config object Firebase gives you).');
+  const raw = document.getElementById('fb-config-input').value;
+  const config = parseFirebaseConfig(raw);
+  if (!config || !config.databaseURL) {
+    toastPreApp('Could not read that config. Paste the whole snippet Firebase gave you, including the { } braces — it\'s fine if it still has "const firebaseConfig = " in front.');
     return;
   }
   if (!initFirebase(config)) return;
@@ -1026,11 +1066,11 @@ function createHousehold() {
 }
 
 function joinHousehold() {
-  const rawConfig = document.getElementById('fb-config-input-join').value.trim();
-  if (rawConfig) {
-    let config;
-    try { config = JSON.parse(rawConfig); } catch (e) {
-      toastPreApp('Could not parse Firebase config JSON.');
+  const rawConfig = document.getElementById('fb-config-input-join').value;
+  if (rawConfig.trim()) {
+    const config = parseFirebaseConfig(rawConfig);
+    if (!config || !config.databaseURL) {
+      toastPreApp('Could not read that config. Paste the whole snippet Firebase gave you, including the { } braces.');
       return;
     }
     if (!initFirebase(config)) return;
